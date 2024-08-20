@@ -9,3 +9,4 @@ requests
 tenacity
 python-dotenv
 langchain-community
+docx2txt
