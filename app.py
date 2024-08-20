@@ -18,15 +18,20 @@ from langchain.schema import Document
 from typing import Any, List, Mapping, Optional
 from tenacity import retry, stop_after_attempt, wait_fixed
 from requests.exceptions import RequestException
+from dotenv import load_dotenv
+
+
+# Load environment variables
+load_dotenv()
 
 # Azure Embedding Configuration
-AZURE_EMBEDDING_URL = "https://neoj.openai.azure.com/openai/deployments/text-embedding-3-large/embeddings?api-version=2023-05-15"
-AZURE_EMBEDDING_API_KEY = "5a9e9586add04c3492b41356f1abdc01"
-AZURE_EMBEDDING_DEPLOYMENT_NAME = "text-embedding-3-large"
+AZURE_EMBEDDING_URL = os.getenv('AZURE_EMBEDDING_URL')
+AZURE_EMBEDDING_API_KEY = os.getenv('AZURE_EMBEDDING_API_KEY')
+AZURE_EMBEDDING_DEPLOYMENT_NAME = os.getenv('AZURE_EMBEDDING_DEPLOYMENT_NAME')
 
 # LLM Configuration
-LLM_BASE_URL = "https://llm.chira.tech/v1/chat/completions"
-LLM_API_KEY = "app-fTCuXuMSqNu8bSb7VOeo4sf3"
+LLM_BASE_URL = os.getenv('LLM_BASE_URL')
+LLM_API_KEY = os.getenv('LLM_API_KEY')
 
 # Custom Azure Embeddings class
 class AzureEmbeddings(Embeddings):
