@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import json
 import time
-import io
 import tempfile
 import os
 import pandas as pd
@@ -19,7 +18,6 @@ from typing import Any, List, Mapping, Optional
 from tenacity import retry, stop_after_attempt, wait_fixed
 from requests.exceptions import RequestException
 from dotenv import load_dotenv
-
 
 # Load environment variables
 load_dotenv()
@@ -99,7 +97,7 @@ class CustomLLM(LLM):
 # Page configuration
 st.set_page_config(page_title="CA Assist", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS
+# Custom CSS with Streamlit-compatible theming
 st.markdown(
     """
     <style>
@@ -107,8 +105,8 @@ st.markdown(
 
     body {
         font-family: 'Roboto', sans-serif;
-        background-color: #1E1E1E;
-        color: #FFFFFF;
+        color: var(--text-color);
+        background-color: var(--background-color);
     }
 
     .stApp {
@@ -127,7 +125,7 @@ st.markdown(
         transform: translateX(-50%);
         width: 80%;
         max-width: 800px;
-        background: rgba(30, 30, 30, 0.7);
+        background: var(--background-color);
         backdrop-filter: blur(10px);
         padding: 1rem;
         border-radius: 10px;
@@ -135,22 +133,22 @@ st.markdown(
     }
 
     .stChatMessage {
-        background: rgba(60, 60, 60, 0.5);
+        background: var(--secondary-background-color);
         border-radius: 10px;
         padding: 10px;
         margin: 10px 0;
     }
 
     .stTextInput > div > div > input {
-        background: rgba(80, 80, 80, 0.3);
-        color: #FFFFFF;
+        background: var(--input-background-color);
+        color: var(--text-color);
         border: none;
         border-radius: 5px;
     }
 
     .stButton > button {
-        background: rgba(80, 80, 80, 0.5);
-        color: #FFFFFF;
+        background: var(--secondary-background-color);
+        color: var(--text-color);
         border: none;
         border-radius: 5px;
         padding: 10px 20px;
@@ -158,15 +156,15 @@ st.markdown(
     }
 
     .stButton > button:hover {
-        background: rgba(100, 100, 100, 0.5);
+        background: var(--hover-color);
     }
 
     h1, h2, h3 {
-        color: #FFFFFF;
+        color: var(--text-color);
     }
 
     .sidebar .sidebar-content {
-        background-color: #2E2E2E;
+        background-color: var(--sidebar-color);
     }
     </style>
     """,
@@ -239,6 +237,15 @@ with st.sidebar:
                 st.success("Document processed successfully!")
             except Exception as e:
                 st.error(f"An error occurred while processing the document: {str(e)}")
+
+    # Theme selector
+    if st.button("Toggle Dark/Light Mode"):
+        current_theme = st.get_option("theme.base")
+        if current_theme == "light":
+            st.set_option("theme.base", "dark")
+        else:
+            st.set_option("theme.base", "light")
+        st.experimental_rerun()
 
 # Main content
 st.title("CA Assist")
