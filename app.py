@@ -176,47 +176,36 @@ st.markdown(
 def process_document(uploaded_file):
     file_type = uploaded_file.type
     
-    st.text(f"Processing {file_type} file...")
     
     if file_type == "application/pdf":
-        st.text("Reading PDF file...")
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
             tmp_file.write(uploaded_file.getvalue())
             tmp_file_path = tmp_file.name
         loader = PyPDFLoader(tmp_file_path)
         documents = loader.load()
     elif file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        st.text("Reading DOCX file...")
         with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_file:
             tmp_file.write(uploaded_file.getvalue())
             tmp_file_path = tmp_file.name
         loader = Docx2txtLoader(tmp_file_path)
         documents = loader.load()
     elif file_type in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
-        st.text("Reading Excel file...")
         df = pd.read_excel(uploaded_file)
-        st.text(f"Excel file read. Shape: {df.shape}")
         documents = [Document(page_content=row.to_string(), metadata={"row": i}) for i, row in df.iterrows()]
-        st.text(f"Converted {len(documents)} rows to documents")
     else:
         st.error("Unsupported file format")
         return None
 
-    st.text("Splitting text...")
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     texts = text_splitter.split_documents(documents)
-    st.text(f"Split into {len(texts)} text chunks")
     
-    st.text("Creating embeddings...")
     embeddings = AzureEmbeddings()
     
-    st.text("Creating vector store...")
     vectorstore = FAISS.from_documents(texts, embeddings)
     
     if file_type not in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
         os.unlink(tmp_file_path)
     
-    st.text("Document processing complete!")
     return vectorstore
 
 # Sidebar
@@ -238,14 +227,6 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"An error occurred while processing the document: {str(e)}")
 
-    # Theme selector
-    if st.button("Toggle Dark/Light Mode"):
-        current_theme = st.get_option("theme.base")
-        if current_theme == "light":
-            st.set_option("theme.base", "dark")
-        else:
-            st.set_option("theme.base", "light")
-        st.experimental_rerun()
 
 # Main content
 st.title("CA Assist")
