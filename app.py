@@ -174,39 +174,74 @@ st.markdown(
 # Function to load and process documents
 @st.cache_resource
 def process_document(uploaded_file):
-    file_type = uploaded_file.type
-    
-    
-    if file_type == "application/pdf":
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
-            tmp_file_path = tmp_file.name
-        loader = PyPDFLoader(tmp_file_path)
-        documents = loader.load()
-    elif file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
-            tmp_file_path = tmp_file.name
-        loader = Docx2txtLoader(tmp_file_path)
-        documents = loader.load()
-    elif file_type in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
-        df = pd.read_excel(uploaded_file)
-        documents = [Document(page_content=row.to_string(), metadata={"row": i}) for i, row in df.iterrows()]
-    else:
-        st.error("Unsupported file format")
+    if uploaded_file is None:
         return None
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    texts = text_splitter.split_documents(documents)
-    
-    embeddings = AzureEmbeddings()
-    
-    vectorstore = FAISS.from_documents(texts, embeddings)
-    
-    if file_type not in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
-        os.unlink(tmp_file_path)
-    
-    return vectorstore
+    file_type = uploaded_file.type
+    progress_placeholder = st.empty()
+    status_placeholder = st.empty()
+
+    # Display initial status
+    status_placeholder.markdown("📄 Processing document...")
+    progress_bar = progress_placeholder.progress(0)
+
+    try:
+        # Step 1: Load document
+        status_placeholder.markdown("📄 Loading document...")
+        progress_bar.progress(20)
+        
+        if file_type == "application/pdf":
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_file_path = tmp_file.name
+            loader = PyPDFLoader(tmp_file_path)
+            documents = loader.load()
+        elif file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_file_path = tmp_file.name
+            loader = Docx2txtLoader(tmp_file_path)
+            documents = loader.load()
+        elif file_type in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
+            df = pd.read_excel(uploaded_file)
+            documents = [Document(page_content=row.to_string(), metadata={"row": i}) for i, row in df.iterrows()]
+        else:
+            status_placeholder.error("❌ Unsupported file format")
+            progress_placeholder.empty()
+            return None
+
+        # Step 2: Split text
+        status_placeholder.markdown("✂️ Splitting text into chunks...")
+        progress_bar.progress(40)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        texts = text_splitter.split_documents(documents)
+        
+        # Step 3: Create embeddings
+        status_placeholder.markdown("🧠 Creating embeddings...")
+        progress_bar.progress(60)
+        embeddings = AzureEmbeddings()
+        
+        # Step 4: Create vector store
+        status_placeholder.markdown("📚 Creating vector store...")
+        progress_bar.progress(80)
+        vectorstore = FAISS.from_documents(texts, embeddings)
+        
+        if file_type not in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
+            os.unlink(tmp_file_path)
+
+        # Complete
+        progress_bar.progress(100)
+        status_placeholder.markdown("✅ Document processed successfully!")
+        time.sleep(1)  # Show completion message briefly
+        progress_placeholder.empty()
+        status_placeholder.empty()
+        
+        return vectorstore
+
+    except Exception as e:
+        status_placeholder.error(f"❌ Error processing document: {str(e)}")
+        progress_placeholder.empty()
+        return None
 
 # Sidebar
 with st.sidebar:
@@ -226,7 +261,6 @@ with st.sidebar:
                 st.success("Document processed successfully!")
             except Exception as e:
                 st.error(f"An error occurred while processing the document: {str(e)}")
-
 
 # Main content
 st.title("CA Assist")
@@ -260,23 +294,62 @@ if prompt:
         
         llm = CustomLLM()
         
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory
-        )
-        
-        try:
-            result = qa_chain.invoke({"question": prompt})
-            response = result['answer']
-        except Exception as e:
-            st.error(f"An error occurred while processing your request: {str(e)}")
-            response = "I'm sorry, but I encountered an error while processing your request. Please try again later."
-        
-        st.session_state.messages.append({"role": "assistant", "content": response})
         with chat_container:
             with st.chat_message("assistant"):
-                st.markdown(response)
+                message_placeholder = st.empty()
+                stop_button_placeholder = st.empty()
+                full_response = ""
+                stop_gen = stop_button_placeholder.button("Stop Generating")
+
+                try:
+                    with st.spinner("Thinking..."):
+                        # Get relevant documents
+                        docs = retriever.get_relevant_documents(prompt)
+                        
+                        # Prepare context and messages
+                        context = "\n\n".join([doc.page_content for doc in docs])
+                        messages = [
+                            {"role": "system", "content": f"You are a helpful assistant. Use this context to answer the question: {context}"},
+                            {"role": "user", "content": prompt}
+                        ]
+                        
+                        # Make streaming API request
+                        headers = {
+                            "Authorization": f"Bearer {LLM_API_KEY}",
+                            "Content-Type": "application/json"
+                        }
+                        data = {
+                            "model": "Dify",
+                            "messages": messages,
+                            "stream": True
+                        }
+                        
+                        with requests.post(LLM_BASE_URL, headers=headers, json=data, stream=True) as r:
+                            r.raise_for_status()
+                            for chunk in r.iter_lines():
+                                if stop_gen:
+                                    break
+                                if chunk:
+                                    try:
+                                        chunk_data = json.loads(chunk.decode('utf-8').lstrip('data: '))
+                                        if chunk_data.get('choices'):
+                                            chunk_content = chunk_data['choices'][0]['delta'].get('content', '')
+                                            if chunk_content:
+                                                full_response += chunk_content
+                                                message_placeholder.markdown(full_response + "▌")
+                                                time.sleep(0.01)
+                                    except json.JSONDecodeError:
+                                        pass  # Ignore non-JSON lines
+
+                    message_placeholder.markdown(full_response)
+                except Exception as e:
+                    st.error(f"An error occurred while processing your request: {str(e)}")
+                    full_response = "I'm sorry, but I encountered an error while processing your request. Please try again later."
+                    message_placeholder.markdown(full_response)
+                finally:
+                    stop_button_placeholder.empty()
+        
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
     else:
         # If no document is uploaded, use the regular chat API
         headers = {
